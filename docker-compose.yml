@@ -1,0 +1,131 @@
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_ALGORITHM: HS256
+  JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-1440}
+  ADMIN_USERNAME: ${ADMIN_USERNAME}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  UPLOAD_DIR: /data/uploads
+  OUTPUT_DIR: /data/outputs
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-2048}
+  WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+  WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+  WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+  WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-el}
+  WHISPER_MODEL_DIR: /data/models
+  CHUNK_SECONDS: ${CHUNK_SECONDS:-900}
+  OVERLAP_SECONDS: ${OVERLAP_SECONDS:-10}
+  LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+  LLM_MODEL: ${LLM_MODEL:-llama3.1:8b}
+  OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    volumes:
+      - audio_uploads:/data/uploads
+      - audio_outputs:/data/outputs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  worker:
+    build:
+      context: ./worker
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    volumes:
+      - audio_uploads:/data/uploads
+      - audio_outputs:/data/outputs
+      - whisper_models:/data/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${WORKER_MEMORY_LIMIT:-8g}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NUXT_PUBLIC_API_BASE: /api
+    restart: unless-stopped
+    environment:
+      NUXT_PUBLIC_API_BASE: /api
+      NITRO_PORT: "3000"
+    expose:
+      - "3000"
+
+  nginx:
+    build:
+      context: ./nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - audio_uploads:/data/uploads:ro
+      - audio_outputs:/data/outputs:ro
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    profiles: ["ollama"]
+    volumes:
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
+
+volumes:
+  postgres_data:
+  redis_data:
+  audio_uploads:
+  audio_outputs:
+  whisper_models:
+  ollama_data:
