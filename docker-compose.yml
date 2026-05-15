@@ -97,6 +97,8 @@ services:
     environment:
       NUXT_PUBLIC_API_BASE: /api
       NITRO_PORT: "3000"
+      NUXT_PUBLIC_DEMO_USERNAME: ${DEMO_USERNAME:-}
+      NUXT_PUBLIC_DEMO_PASSWORD: ${DEMO_PASSWORD:-}
     expose:
       - "3000"
 

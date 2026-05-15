@@ -18,6 +18,18 @@
         {{ loading ? 'Signing in…' : 'Sign in' }}
       </button>
     </form>
+
+    <div v-if="demoEnabled" class="mt-5 pt-4 border-t">
+      <button type="button" @click="useDemo" :disabled="loading"
+              class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 rounded py-2 text-sm font-medium disabled:opacity-60">
+        Use demo credentials
+      </button>
+      <div class="mt-3 text-xs text-slate-500 space-y-1">
+        <p>Demo login (click above or copy):</p>
+        <p class="font-mono select-all">user: {{ demoUsername }}</p>
+        <p class="font-mono select-all">pass: {{ demoPassword }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -28,6 +40,16 @@ const error = ref<string | null>(null)
 const loading = ref(false)
 const router = useRouter()
 const { login } = useAuth()
+
+const config = useRuntimeConfig()
+const demoUsername = String(config.public.demoUsername || '')
+const demoPassword = String(config.public.demoPassword || '')
+const demoEnabled = computed(() => demoUsername.length > 0 && demoPassword.length > 0)
+
+function useDemo() {
+  username.value = demoUsername
+  password.value = demoPassword
+}
 
 async function onSubmit() {
   error.value = null

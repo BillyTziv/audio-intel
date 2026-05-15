@@ -6,6 +6,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      demoUsername: process.env.NUXT_PUBLIC_DEMO_USERNAME || '',
+      demoPassword: process.env.NUXT_PUBLIC_DEMO_PASSWORD || '',
     },
   },
   app: {
