@@ -44,7 +44,7 @@ def transcribe_chunk(path: str, language: str | None = None) -> tuple[list[Segme
     segments_iter, info = model.transcribe(
         path,
         language=language or None,
-        beam_size=5,
+        beam_size=1,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
         condition_on_previous_text=False,

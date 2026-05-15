@@ -51,12 +51,26 @@
       </div>
 
       <div v-else-if="active === 'segments'" class="space-y-1 max-h-[60vh] overflow-y-auto pr-2">
+        <div v-if="(transcript.speakers || []).length" class="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          <span class="text-slate-500">Speakers:</span>
+          <span v-for="sp in (transcript.speakers || [])" :key="String(sp)"
+                :class="['inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium', speakerClass(String(sp))]">
+            <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+            {{ sp }}
+          </span>
+        </div>
         <div v-for="(seg, i) in (transcript.segments || [])" :key="i"
              class="grid grid-cols-[max-content_1fr] gap-3 py-1 border-b last:border-b-0">
           <span class="text-xs font-mono text-slate-500 whitespace-nowrap">
             {{ ts(seg.start) }} → {{ ts(seg.end) }}
           </span>
-          <span class="text-slate-800">{{ seg.text }}</span>
+          <span class="text-slate-800">
+            <span v-if="seg.speaker"
+                  :class="['mr-2 inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold align-middle', speakerClass(seg.speaker)]">
+              {{ seg.speaker }}
+            </span>
+            {{ seg.text }}
+          </span>
         </div>
       </div>
     </div>
@@ -73,7 +87,8 @@ const props = defineProps<{
     key_points: unknown[] | null
     decisions: unknown[] | null
     action_items: unknown[] | null
-    segments: { start: number; end: number; text: string }[] | null
+    segments: { start: number; end: number; text: string; speaker?: string | null }[] | null
+    speakers?: unknown[] | null
   }
 }>()
 
@@ -104,6 +119,23 @@ function dueOf(a: unknown): string | null {
     return d ? String(d) : null
   }
   return null
+}
+
+const speakerPalette = [
+  'bg-sky-100 text-sky-800',
+  'bg-emerald-100 text-emerald-800',
+  'bg-amber-100 text-amber-800',
+  'bg-violet-100 text-violet-800',
+  'bg-rose-100 text-rose-800',
+  'bg-teal-100 text-teal-800',
+  'bg-fuchsia-100 text-fuchsia-800',
+  'bg-lime-100 text-lime-800',
+]
+
+function speakerClass(label: string): string {
+  let hash = 0
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0
+  return speakerPalette[hash % speakerPalette.length]
 }
 
 function ts(s: number) {

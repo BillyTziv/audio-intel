@@ -14,3 +14,4 @@ class TranscriptOut(BaseModel):
     decisions: list[Any] | None
     action_items: list[Any] | None
     segments: list[Any] | None
+    speakers: list[Any] | None

@@ -31,6 +31,7 @@ class Transcript(Base):
     decisions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     action_items: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     segments: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    speakers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False

@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from datetime import datetime
+
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
@@ -14,7 +16,7 @@ from ..deps import get_current_user, get_db
 from ..models.audio_job import AudioJob, JobStatus
 from ..models.transcript import Transcript
 from ..models.user import User
-from ..schemas.audio import AudioJobListOut, AudioJobOut, UploadResponse
+from ..schemas.audio import AudioJobListOut, AudioJobOut, AudioJobUpdate, UploadResponse
 from ..schemas.transcript import TranscriptOut
 from ..services.queue import enqueue_job
 from ..services.storage import save_upload
@@ -43,9 +45,32 @@ def _get_job_for_user(db: Session, job_id: UUID, user: User) -> AudioJob:
     return job
 
 
+def _clean_str(v: str | None, max_len: int) -> str | None:
+    if v is None:
+        return None
+    v = v.strip()
+    if not v:
+        return None
+    return v[:max_len]
+
+
+def _parse_participants(raw: str | None) -> list[str] | None:
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.replace("\n", ",").split(",")]
+    cleaned = [p[:120] for p in parts if p]
+    return cleaned or None
+
+
 @router.post("/upload", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload(
     file: UploadFile = File(...),
+    diarize: bool = Form(False),
+    title: str | None = Form(None),
+    project: str | None = Form(None),
+    description: str | None = Form(None),
+    meeting_date: datetime | None = Form(None),
+    participants: str | None = Form(None),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> UploadResponse:
@@ -69,6 +94,12 @@ async def upload(
         mime_type=file.content_type,
         size_bytes=size,
         status=JobStatus.queued,
+        diarize=diarize,
+        title=_clean_str(title, 512),
+        project=_clean_str(project, 255),
+        description=_clean_str(description, 10000),
+        meeting_date=meeting_date,
+        participants=_parse_participants(participants),
     )
     db.add(job)
     db.commit()
@@ -109,6 +140,35 @@ def get_job(
     return AudioJobOut.model_validate(job)
 
 
+@router.patch("/jobs/{job_id}", response_model=AudioJobOut)
+def update_job(
+    job_id: UUID,
+    payload: AudioJobUpdate = Body(...),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> AudioJobOut:
+    job = _get_job_for_user(db, job_id, current)
+    data = payload.model_dump(exclude_unset=True)
+    if "title" in data:
+        job.title = _clean_str(data["title"], 512)
+    if "project" in data:
+        job.project = _clean_str(data["project"], 255)
+    if "description" in data:
+        job.description = _clean_str(data["description"], 10000)
+    if "meeting_date" in data:
+        job.meeting_date = data["meeting_date"]
+    if "participants" in data:
+        parts = data["participants"]
+        if parts is None:
+            job.participants = None
+        else:
+            cleaned = [p.strip()[:120] for p in parts if p and p.strip()]
+            job.participants = cleaned or None
+    db.commit()
+    db.refresh(job)
+    return AudioJobOut.model_validate(job)
+
+
 @router.get("/jobs/{job_id}/transcript", response_model=TranscriptOut)
 def get_transcript(
     job_id: UUID,
@@ -137,6 +197,9 @@ def _segments_to_srt(segments: list[dict]) -> str:
         start = float(seg.get("start", 0.0))
         end = float(seg.get("end", start))
         text = (seg.get("text") or "").strip()
+        speaker = seg.get("speaker")
+        if speaker:
+            text = f"[{speaker}] {text}"
         lines.append(str(i))
         lines.append(f"{fmt(start)} --> {fmt(end)}")
         lines.append(text)
@@ -199,6 +262,7 @@ def download(
             "decisions": transcript.decisions,
             "action_items": transcript.action_items,
             "segments": transcript.segments,
+            "speakers": transcript.speakers,
         }
         return Response(
             content=json.dumps(body, ensure_ascii=False, indent=2),

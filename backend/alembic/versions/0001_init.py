@@ -13,12 +13,17 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
-job_status = sa.Enum(
+job_status = postgresql.ENUM(
     "pending", "queued", "validating", "converting", "chunking",
     "transcribing", "summarizing", "completed", "failed",
     name="job_status",
+    create_type=False,
 )
-chunk_status = sa.Enum("pending", "processing", "done", "failed", name="chunk_status")
+chunk_status = postgresql.ENUM(
+    "pending", "processing", "done", "failed",
+    name="chunk_status",
+    create_type=False,
+)
 
 
 def upgrade() -> None:

@@ -20,6 +20,11 @@ class WorkerSettings(BaseSettings):
     CHUNK_SECONDS: int = 900
     OVERLAP_SECONDS: int = 10
 
+    DIARIZATION_ENABLED: bool = False
+    DIARIZATION_MODEL: str = "pyannote/speaker-diarization-3.1"
+    DIARIZATION_DEVICE: str = "cpu"
+    HF_TOKEN: str = ""
+
     LLM_PROVIDER: str = "ollama"
     LLM_MODEL: str = "llama3.1:8b"
     OLLAMA_URL: str = "http://ollama:11434"

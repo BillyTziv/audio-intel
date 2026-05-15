@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from .models import AudioChunk, AudioJob, ChunkStatus, JobStatus, Transcript
 from .pipeline.chunk import split_wav
 from .pipeline.clean import clean_text, segments_to_raw_text
 from .pipeline.convert import to_wav_mono_16k
+from .pipeline.diarize import DiarizationUnavailable, SpeakerTurn, assign_speakers, diarize_audio
 from .pipeline.merge import merge_chunk_transcripts
 from .pipeline.summarize import summarize
 from .pipeline.transcribe import transcribe_chunk
@@ -62,15 +64,22 @@ def process_audio_job(job_id_str: str) -> None:
 
     try:
         job.started_at = _utcnow()
+        timings: dict[str, float] = {}
+
         _set_status(db, job, JobStatus.validating, 0.02)
+        _t = time.perf_counter()
         duration = validate_file(job.file_path)
+        timings["validate"] = time.perf_counter() - _t
         job.duration_seconds = duration
         db.commit()
 
         _set_status(db, job, JobStatus.converting, 0.05)
+        _t = time.perf_counter()
         wav_path = to_wav_mono_16k(job.file_path, str(work_dir))
+        timings["convert"] = time.perf_counter() - _t
 
         _set_status(db, job, JobStatus.chunking, 0.10)
+        _t = time.perf_counter()
         chunk_dir = work_dir / "chunks"
         chunks = split_wav(
             src_wav=wav_path,
@@ -87,8 +96,21 @@ def process_audio_job(job_id_str: str) -> None:
                 file_path=c.path, status=ChunkStatus.pending,
             ))
         db.commit()
+        timings["chunk"] = time.perf_counter() - _t
+
+        diarize_requested = bool(getattr(job, "diarize", False))
+        diarize_active = diarize_requested and settings.DIARIZATION_ENABLED
+        if diarize_requested and not settings.DIARIZATION_ENABLED:
+            log.warning(
+                "job=%s requested diarization but DIARIZATION_ENABLED is off; skipping",
+                job.id,
+            )
+
+        # Reserve the tail of the progress bar for diarization when enabled.
+        transcribe_end = 0.70 if diarize_active else 0.80
 
         _set_status(db, job, JobStatus.transcribing, 0.15)
+        _t = time.perf_counter()
         per_chunk: list = []
         detected_language: str | None = None
         total = max(1, len(chunks))
@@ -113,19 +135,43 @@ def process_audio_job(job_id_str: str) -> None:
                 raise
 
             db.commit()
-            progress = 0.15 + 0.65 * ((i + 1) / total)
+            progress = 0.15 + (transcribe_end - 0.15) * ((i + 1) / total)
             _set_status(db, job, JobStatus.transcribing, progress)
 
+        timings["transcribe"] = time.perf_counter() - _t
+
+        turns: list[SpeakerTurn] = []
+        diarize_error: str | None = None
+        if diarize_active:
+            _set_status(db, job, JobStatus.diarizing, transcribe_end)
+            _t = time.perf_counter()
+            try:
+                turns = diarize_audio(wav_path)
+            except DiarizationUnavailable as exc:
+                diarize_error = str(exc)
+                log.warning("job=%s diarization unavailable: %s", job.id, exc)
+            except Exception as exc:
+                diarize_error = f"diarization failed: {exc}"
+                log.exception("job=%s diarization failed", job.id)
+            timings["diarize"] = time.perf_counter() - _t
+
         _set_status(db, job, JobStatus.summarizing, 0.82)
+        _t = time.perf_counter()
         merged = merge_chunk_transcripts(
             per_chunk=per_chunk,
             chunk_seconds=settings.CHUNK_SECONDS,
             overlap_seconds=settings.OVERLAP_SECONDS,
         )
+        speakers_per_segment: list[str | None] = (
+            assign_speakers(merged, turns) if turns else [None] * len(merged)
+        )
         raw_text = segments_to_raw_text(merged)
         cleaned = clean_text(raw_text)
+        timings["merge_clean"] = time.perf_counter() - _t
 
+        _t = time.perf_counter()
         summary_result = summarize(cleaned or raw_text, language=detected_language)
+        timings["summarize"] = time.perf_counter() - _t
 
         transcript = db.query(Transcript).filter(Transcript.job_id == job.id).one_or_none()
         if not transcript:
@@ -139,14 +185,36 @@ def process_audio_job(job_id_str: str) -> None:
         transcript.decisions = summary_result.decisions
         transcript.action_items = summary_result.action_items
         transcript.segments = [
-            {"start": round(s.start, 3), "end": round(s.end, 3), "text": s.text}
-            for s in merged
+            {
+                "start": round(s.start, 3),
+                "end": round(s.end, 3),
+                "text": s.text,
+                "speaker": speakers_per_segment[i],
+            }
+            for i, s in enumerate(merged)
         ]
+        unique_speakers = sorted({sp for sp in speakers_per_segment if sp})
+        transcript.speakers = unique_speakers or None
         db.commit()
+
+        if diarize_error:
+            existing = job.error_message or ""
+            job.error_message = (existing + ("\n" if existing else "") + diarize_error)[:4000]
+            db.commit()
 
         job.completed_at = _utcnow()
         _set_status(db, job, JobStatus.completed, 1.0)
         log.info("job=%s completed (%d segments, %d chars)", job.id, len(merged), len(raw_text))
+
+        total_time = sum(timings.values())
+        rtf = (total_time / duration) if duration and duration > 0 else 0.0
+        breakdown = " ".join(
+            f"{k}={v:.2f}s({(100 * v / total_time):.0f}%)" for k, v in timings.items()
+        ) if total_time > 0 else ""
+        log.info(
+            "timings job=%s audio=%.1fs total=%.1fs rtf=%.2fx | %s",
+            job.id, duration or 0.0, total_time, rtf, breakdown,
+        )
 
     except Exception as exc:
         log.exception("job %s failed", job_id)
