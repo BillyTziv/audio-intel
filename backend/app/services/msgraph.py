@@ -24,6 +24,8 @@ SCOPES: tuple[str, ...] = (
     "Calendars.Read",
     "OnlineMeetings.Read",
     "OnlineMeetings.ReadWrite",
+    "OnlineMeetingRecording.Read.All",
+    "OnlineMeetingTranscript.Read.All",
 )
 
 
