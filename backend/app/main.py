@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .api import audio as audio_api
@@ -15,6 +16,16 @@ configure_logging()
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="Private Audio Intelligence Tool", version="0.1.0")
+
+_origins = [o.strip() for o in get_settings().CORS_ALLOW_ORIGINS.split(",") if o.strip()]
+if _origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.on_event("startup")

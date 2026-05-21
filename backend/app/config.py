@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     MS_REDIRECT_URI: str = "http://localhost:8080/api/teams/auth/callback"
     MS_POST_LOGIN_REDIRECT: str = "http://localhost:8080/teams"
 
+    # Comma-separated list of allowed CORS origins (no trailing slash).
+    # Empty = same-origin only (localhost dev behind nginx works without CORS).
+    CORS_ALLOW_ORIGINS: str = ""
+
     ALLOWED_AUDIO_MIME: tuple[str, ...] = Field(
         default=(
             "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
