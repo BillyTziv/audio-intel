@@ -26,6 +26,12 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
 
+    MS_CLIENT_ID: str = ""
+    MS_CLIENT_SECRET: str = ""
+    MS_TENANT_ID: str = "common"
+    MS_REDIRECT_URI: str = "http://localhost:8080/api/teams/auth/callback"
+    MS_POST_LOGIN_REDIRECT: str = "http://localhost:8080/teams"
+
     ALLOWED_AUDIO_MIME: tuple[str, ...] = Field(
         default=(
             "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",

@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from .api import audio as audio_api
 from .api import auth as auth_api
+from .api import teams as teams_api
 from .config import get_settings
 from .database import SessionLocal
 from .logging_config import configure_logging
@@ -39,6 +40,7 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
 
 app.include_router(auth_api.router)
 app.include_router(audio_api.router)
+app.include_router(teams_api.router)
 
 
 _ = get_settings()

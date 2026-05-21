@@ -48,6 +48,10 @@ class AudioJob(Base):
     meeting_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     participants: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
 
+    source: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    source_meeting_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    teams_transcript_vtt: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus, name="job_status"), default=JobStatus.pending, nullable=False, index=True
     )

@@ -13,3 +13,5 @@ redis==5.2.1
 rq==2.0.0
 aiofiles==24.1.0
 httpx==0.28.1
+msal==1.31.1
+webvtt-py==0.5.1
